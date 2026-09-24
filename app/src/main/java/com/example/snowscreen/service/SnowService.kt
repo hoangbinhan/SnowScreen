@@ -1,14 +1,18 @@
 package com.example.snowscreen.service
 
 import android.app.AlarmManager
+import android.app.AppOpsManager
 import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -18,6 +22,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
@@ -51,6 +56,14 @@ class SnowService : Service(), SensorEventListener {
         const val EXTRA_TILT_ENABLED = "EXTRA_TILT_ENABLED"
         const val EXTRA_GUSTS_ENABLED = "EXTRA_GUSTS_ENABLED"
         const val EXTRA_ONLY_HOME_LOCK = "EXTRA_ONLY_HOME_LOCK"
+        const val EXTRA_DENDRITE = "EXTRA_DENDRITE"
+        const val EXTRA_HEXAGON = "EXTRA_HEXAGON"
+        const val EXTRA_STAR = "EXTRA_STAR"
+        const val EXTRA_CLUSTER = "EXTRA_CLUSTER"
+        const val EXTRA_DIAMOND = "EXTRA_DIAMOND"
+        const val EXTRA_STAR12 = "EXTRA_STAR12"
+        const val EXTRA_CROSS = "EXTRA_CROSS"
+        const val EXTRA_DUST = "EXTRA_DUST"
 
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "snow_service_channel"
@@ -84,9 +97,34 @@ class SnowService : Service(), SensorEventListener {
                 val tiltEnabled = intent.getBooleanExtra(EXTRA_TILT_ENABLED, currentSettings.sensorTiltEnabled)
                 val gustsEnabled = intent.getBooleanExtra(EXTRA_GUSTS_ENABLED, currentSettings.randomWindGusts)
                 val onlyHomeLock = intent.getBooleanExtra(EXTRA_ONLY_HOME_LOCK, currentSettings.onlyHomeAndLock)
+                
+                val enableDendrite = intent.getBooleanExtra(EXTRA_DENDRITE, currentSettings.enableDendrite)
+                val enableHexagon = intent.getBooleanExtra(EXTRA_HEXAGON, currentSettings.enableHexagon)
+                val enableStar = intent.getBooleanExtra(EXTRA_STAR, currentSettings.enableStar)
+                val enableCluster = intent.getBooleanExtra(EXTRA_CLUSTER, currentSettings.enableCluster)
+                val enableDiamond = intent.getBooleanExtra(EXTRA_DIAMOND, currentSettings.enableDiamond)
+                val enableStar12 = intent.getBooleanExtra(EXTRA_STAR12, currentSettings.enableStar12)
+                val enableCross = intent.getBooleanExtra(EXTRA_CROSS, currentSettings.enableCross)
+                val enableDust = intent.getBooleanExtra(EXTRA_DUST, currentSettings.enableDust)
 
                 val wasTiltEnabled = currentSettings.sensorTiltEnabled
-                currentSettings = SnowSettings(count, speed, size, wind, tiltEnabled, gustsEnabled, onlyHomeLock)
+                currentSettings = SnowSettings(
+                    flakeCount = count,
+                    speedMultiplier = speed,
+                    sizeMultiplier = size,
+                    wind = wind,
+                    sensorTiltEnabled = tiltEnabled,
+                    randomWindGusts = gustsEnabled,
+                    onlyHomeAndLock = onlyHomeLock,
+                    enableDendrite = enableDendrite,
+                    enableHexagon = enableHexagon,
+                    enableStar = enableStar,
+                    enableCluster = enableCluster,
+                    enableDiamond = enableDiamond,
+                    enableStar12 = enableStar12,
+                    enableCross = enableCross,
+                    enableDust = enableDust
+                )
                 snowView?.updateSettings(currentSettings)
 
                 if (tiltEnabled && !wasTiltEnabled) {
@@ -119,7 +157,7 @@ class SnowService : Service(), SensorEventListener {
             visibilityRunnable = object : Runnable {
                 override fun run() {
                     checkAndToggleVisibility()
-                    handler.postDelayed(this, 1000L) // check every second
+                    handler.postDelayed(this, 1000L) // check every 1 sec
                 }
             }
             handler.post(visibilityRunnable!!)
@@ -128,15 +166,47 @@ class SnowService : Service(), SensorEventListener {
         }
     }
 
+    private fun getLauncherPackageName(): String? {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        return resolveInfo?.activityInfo?.packageName
+    }
+
+    private fun getForegroundPackageName(): String? {
+        val usageStatsManager = getSystemService(USAGE_STATS_SERVICE) as? UsageStatsManager ?: return null
+        val time = System.currentTimeMillis()
+        val events = usageStatsManager.queryEvents(time - 4000, time)
+        val event = UsageEvents.Event()
+        var currentApp: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                currentApp = event.packageName
+            }
+        }
+        return currentApp
+    }
+
     private fun checkAndToggleVisibility() {
+        // 1. Lock Screen Check
         val isLocked = keyguardManager?.isKeyguardLocked == true
         if (isLocked) {
             snowView?.visibility = View.VISIBLE
-        } else {
-            // If onlyHomeAndLock is true and not locked, check if user is on Home or inside our own app
-            // For simplicity and robustness, when unlocked, if not in our app, we can hide or show based on launcher check.
-            // Let's show on lock screen & home.
+            return
+        }
+
+        // 2. Unlocked Home Screen vs Other App Check
+        val foregroundApp = getForegroundPackageName()
+        val launcherApp = getLauncherPackageName()
+
+        // Show snow if currently on Launcher, on our own app, or if foreground app cannot be determined
+        if (foregroundApp == null || foregroundApp == launcherApp || foregroundApp == packageName) {
             snowView?.visibility = View.VISIBLE
+        } else {
+            // Hide snow when user opens other 3rd party apps
+            snowView?.visibility = View.GONE
         }
     }
 
@@ -179,8 +249,8 @@ class SnowService : Service(), SensorEventListener {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Snow on Screen Pro")
-            .setContentText("3D Parallax snow effect is active across screen & lock screen")
+            .setContentTitle("Snow Screen")
+            .setContentText("Snow effect active")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -194,7 +264,6 @@ class SnowService : Service(), SensorEventListener {
 
         snowView = SnowView(this, currentSettings)
 
-        // Window flags covering Status Bar and Navigation Bar (`FLAG_LAYOUT_IN_SCREEN`, `FLAG_LAYOUT_NO_LIMITS`)
         val layoutParamFlags = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -210,7 +279,11 @@ class SnowService : Service(), SensorEventListener {
                 WindowManager.LayoutParams.TYPE_PHONE,
             layoutParamFlags,
             PixelFormat.TRANSLUCENT
-        )
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
 
         try {
             windowManager?.addView(snowView, params)
@@ -221,7 +294,6 @@ class SnowService : Service(), SensorEventListener {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // Keep running or handle restart if desired
         val restartServiceIntent = Intent(applicationContext, SnowService::class.java).apply {
             action = ACTION_START
         }

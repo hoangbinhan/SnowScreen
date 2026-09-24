@@ -1,18 +1,24 @@
 package com.example.snowscreen
 
+import android.app.AppOpsManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.provider.Settings
 import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -20,8 +26,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,6 +37,8 @@ import androidx.compose.ui.unit.sp
 import com.example.snowscreen.model.WeatherMode
 import com.example.snowscreen.service.SnowService
 import com.example.snowscreen.ui.theme.SnowScreenTheme
+import kotlin.math.cos
+import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
 
@@ -39,11 +49,13 @@ class MainActivity : ComponentActivity() {
             SnowScreenTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = Color(0xFF0F172A)
                 ) {
                     SnowControlScreen(
                         onCheckOverlayPermission = { checkOverlayPermission() },
-                        hasOverlayPermission = { hasOverlayPermission() }
+                        hasOverlayPermission = { hasOverlayPermission() },
+                        onCheckUsageStatsPermission = { checkUsageStatsPermission() },
+                        hasUsageStatsPermission = { hasUsageStatsPermission() }
                     )
                 }
             }
@@ -67,28 +79,88 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(APP_OPS_SERVICE) as? AppOpsManager ?: return false
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        } else {
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun checkUsageStatsPermission() {
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+        startActivity(intent)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SnowControlScreen(
     onCheckOverlayPermission: () -> Unit,
-    hasOverlayPermission: () -> Boolean
+    hasOverlayPermission: () -> Boolean,
+    onCheckUsageStatsPermission: () -> Unit,
+    hasUsageStatsPermission: () -> Boolean
 ) {
     val context = LocalContext.current
     var isRunning by remember { mutableStateOf(SnowService.isRunning) }
     var hasPermission by remember { mutableStateOf(hasOverlayPermission()) }
 
-    var flakeCount by remember { mutableStateOf(180f) }
-    var speed by remember { mutableStateOf(1.0f) }
-    var size by remember { mutableStateOf(1.0f) }
-    var wind by remember { mutableStateOf(0.0f) }
-    var tiltEnabled by remember { mutableStateOf(false) }
-    var gustsEnabled by remember { mutableStateOf(false) }
+    var flakeCount by remember { mutableStateOf(70f) }
+    var speed by remember { mutableStateOf(0.7f) }
+    var size by remember { mutableStateOf(0.7f) }
+    var wind by remember { mutableStateOf(-1.0f) }
+    var tiltEnabled by remember { mutableStateOf(true) }
+    var gustsEnabled by remember { mutableStateOf(true) }
     var onlyHomeLock by remember { mutableStateOf(false) }
+
+    // 8 Snowflake shape states
+    var enableDendrite by remember { mutableStateOf(true) }
+    var enableHexagon by remember { mutableStateOf(true) }
+    var enableStar by remember { mutableStateOf(true) }
+    var enableCluster by remember { mutableStateOf(true) }
+    var enableDiamond by remember { mutableStateOf(true) }
+    var enableStar12 by remember { mutableStateOf(true) }
+    var enableCross by remember { mutableStateOf(true) }
+    var enableDust by remember { mutableStateOf(true) }
+
     var selectedWeather by remember { mutableStateOf(WeatherMode.GENTLE) }
 
+    // Ice Blue Theme Palette
+    val icePrimary = Color(0xFF00BCD4)
+    val iceSurfaceVariant = Color(0xFF1E293B).copy(alpha = 0.85f)
+    val iceOnSurfaceVariant = Color(0xFFE0F7FA)
+
+    fun stopService() {
+        val intent = Intent(context, SnowService::class.java).apply {
+            action = SnowService.ACTION_STOP
+        }
+        context.startService(intent)
+        isRunning = false
+    }
+
     fun sendUpdate() {
+        val allDisabled = !enableDendrite && !enableHexagon && !enableStar && !enableCluster &&
+                          !enableDiamond && !enableStar12 && !enableCross && !enableDust
+
+        if (allDisabled) {
+            if (isRunning) {
+                stopService()
+            }
+            return
+        }
+
         if (SnowService.isRunning) {
             val intent = Intent(context, SnowService::class.java).apply {
                 action = SnowService.ACTION_UPDATE
@@ -99,6 +171,14 @@ fun SnowControlScreen(
                 putExtra(SnowService.EXTRA_TILT_ENABLED, tiltEnabled)
                 putExtra(SnowService.EXTRA_GUSTS_ENABLED, gustsEnabled)
                 putExtra(SnowService.EXTRA_ONLY_HOME_LOCK, onlyHomeLock)
+                putExtra(SnowService.EXTRA_DENDRITE, enableDendrite)
+                putExtra(SnowService.EXTRA_HEXAGON, enableHexagon)
+                putExtra(SnowService.EXTRA_STAR, enableStar)
+                putExtra(SnowService.EXTRA_CLUSTER, enableCluster)
+                putExtra(SnowService.EXTRA_DIAMOND, enableDiamond)
+                putExtra(SnowService.EXTRA_STAR12, enableStar12)
+                putExtra(SnowService.EXTRA_CROSS, enableCross)
+                putExtra(SnowService.EXTRA_DUST, enableDust)
             }
             context.startService(intent)
         }
@@ -110,9 +190,9 @@ fun SnowControlScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF0F172A), // Deep Night Blue
-                        Color(0xFF1E293B), // Slate Blue
-                        Color(0xFF334155)  // Muted Frost
+                        Color(0xFF0B132B),
+                        Color(0xFF1C2541),
+                        Color(0xFF3A506B)
                     )
                 )
             )
@@ -121,96 +201,14 @@ fun SnowControlScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .statusBarsPadding()
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // App Title Header
-            Text(
-                text = "❄️ Snow on Screen Pro",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = "3D Parallax Depth, Status Bar & Lock Screen Snowfall",
-                fontSize = 13.sp,
-                color = Color(0xFF94A3B8)
-            )
-
-            // Status Card
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isRunning) Color(0xFF065F46).copy(alpha = 0.8f) else Color(0xFF1E293B).copy(alpha = 0.9f)
-                ),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = if (isRunning) "Status: Active ❄️" else "Status: Stopped ⏸️",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 16.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (isRunning) "Running over Status Bar & Lock Screen" else "Tap start to activate snow effect",
-                            color = Color(0xFFCBD5E1),
-                            fontSize = 12.sp
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isRunning) Color(0xFF34D399) else Color(0xFFEF4444))
-                    )
-                }
-            }
-
-            // Permission Card if missing
-            AnimatedVisibility(visible = !hasPermission) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D).copy(alpha = 0.9f)),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "⚠️ Overlay Permission Needed",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 15.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "To show snow over status bar, home screen, and lock screen, please grant overlay permission.",
-                            color = Color(0xFFFECACA),
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Button(
-                            onClick = { onCheckOverlayPermission() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White)
-                        ) {
-                            Text("Grant Permission", color = Color(0xFF7F1D1D))
-                        }
-                    }
-                }
-            }
-
-            // Start / Stop Main Button
+            // Main Action Button
             Button(
                 onClick = {
                     hasPermission = hasOverlayPermission()
@@ -220,12 +218,12 @@ fun SnowControlScreen(
                     }
 
                     if (isRunning) {
-                        val intent = Intent(context, SnowService::class.java).apply {
-                            action = SnowService.ACTION_STOP
-                        }
-                        context.startService(intent)
-                        isRunning = false
+                        stopService()
                     } else {
+                        val allDisabled = !enableDendrite && !enableHexagon && !enableStar && !enableCluster &&
+                                          !enableDiamond && !enableStar12 && !enableCross && !enableDust
+                        if (allDisabled) return@Button
+
                         val intent = Intent(context, SnowService::class.java).apply {
                             action = SnowService.ACTION_START
                             putExtra(SnowService.EXTRA_FLAKE_COUNT, flakeCount.toInt())
@@ -235,6 +233,14 @@ fun SnowControlScreen(
                             putExtra(SnowService.EXTRA_TILT_ENABLED, tiltEnabled)
                             putExtra(SnowService.EXTRA_GUSTS_ENABLED, gustsEnabled)
                             putExtra(SnowService.EXTRA_ONLY_HOME_LOCK, onlyHomeLock)
+                            putExtra(SnowService.EXTRA_DENDRITE, enableDendrite)
+                            putExtra(SnowService.EXTRA_HEXAGON, enableHexagon)
+                            putExtra(SnowService.EXTRA_STAR, enableStar)
+                            putExtra(SnowService.EXTRA_CLUSTER, enableCluster)
+                            putExtra(SnowService.EXTRA_DIAMOND, enableDiamond)
+                            putExtra(SnowService.EXTRA_STAR12, enableStar12)
+                            putExtra(SnowService.EXTRA_CROSS, enableCross)
+                            putExtra(SnowService.EXTRA_DUST, enableDust)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             context.startForegroundService(intent)
@@ -246,65 +252,261 @@ fun SnowControlScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(68.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) Color(0xFFDC2626) else Color(0xFF3B82F6)
+                    containerColor = if (isRunning) Color(0xFFFF3D00) else Color(0xFF00E5FF),
+                    contentColor = if (isRunning) Color.White else Color(0xFF0F172A)
+                ),
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 10.dp,
+                    pressedElevation = 4.dp
                 )
             ) {
-                Text(
-                    text = if (isRunning) "Stop Snow Effect 🛑" else "Start Snow Effect ❄️",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(text = if (isRunning) "🛑" else "❄️", fontSize = 26.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = if (isRunning) "STOP SNOW EFFECT" else "START SNOW EFFECT",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
             }
 
-            // Weather Presets Section
-            Text(
-                text = "Weather Presets",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Start)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Permission Warning Card
+            AnimatedVisibility(
+                visible = !hasPermission,
+                enter = fadeIn(),
+                exit = fadeOut()
             ) {
-                WeatherMode.entries.forEach { mode ->
-                    if (mode != WeatherMode.CUSTOM) {
-                        FilterChip(
-                            selected = selectedWeather == mode,
-                            onClick = {
-                                selectedWeather = mode
-                                when (mode) {
-                                    WeatherMode.GENTLE -> { flakeCount = 120f; speed = 0.8f; size = 1.0f }
-                                    WeatherMode.BLIZZARD -> { flakeCount = 250f; speed = 2.2f; size = 1.3f }
-                                    WeatherMode.MAGICAL -> { flakeCount = 180f; speed = 1.2f; size = 1.5f }
-                                    else -> {}
-                                }
-                                sendUpdate()
-                            },
-                            label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                            modifier = Modifier.weight(1f)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF7F1D1D).copy(alpha = 0.9f),
+                    tonalElevation = 4.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "⚠️", fontSize = 20.sp)
+                            Text(
+                                text = "Overlay Permission Required",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Text(
+                            text = "To render snow over the status bar, home screen, and lock screen, please grant 'Draw over other apps' permission.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFFECACA)
                         )
+                        Button(
+                            onClick = { onCheckOverlayPermission() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White,
+                                contentColor = Color(0xFF7F1D1D)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Grant Permission", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
 
-            // Interactive Toggles Section
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.8f)),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
+            // Weather Presets Section
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Weather Presets",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color(0xFF80D8FF),
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    WeatherMode.entries.forEach { mode ->
+                        if (mode != WeatherMode.CUSTOM) {
+                            FilterChip(
+                                selected = selectedWeather == mode,
+                                onClick = {
+                                    selectedWeather = mode
+                                    when (mode) {
+                                        WeatherMode.GENTLE -> { flakeCount = 70f; speed = 0.7f; size = 0.7f; wind = -1.0f }
+                                        WeatherMode.BLIZZARD -> { flakeCount = 250f; speed = 2.2f; size = 1.3f; wind = 1.5f }
+                                        WeatherMode.MAGICAL -> { flakeCount = 180f; speed = 1.2f; size = 1.5f; wind = 0.0f }
+                                        else -> {}
+                                    }
+                                    sendUpdate()
+                                },
+                                label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = icePrimary,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = iceSurfaceVariant,
+                                    labelColor = iceOnSurfaceVariant
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Snowflake Shapes Customization Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = iceSurfaceVariant,
+                tonalElevation = 2.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     Text(
-                        text = "Physics, Display & Smart Toggles",
+                        text = "Snowflake Shapes",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 15.sp
+                        color = iceOnSurfaceVariant
+                    )
+
+                    ShapeToggleRow(
+                        flakeType = 0,
+                        title = "Stellar Dendrite",
+                        subtitle = "6-Ray fern crystal",
+                        checked = enableDendrite,
+                        onCheckedChange = {
+                            enableDendrite = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 1,
+                        title = "Hexagonal Plate",
+                        subtitle = "Geometric crystal star",
+                        checked = enableHexagon,
+                        onCheckedChange = {
+                            enableHexagon = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 2,
+                        title = "8-Point Crystal Star",
+                        subtitle = "Sharp intersecting needles",
+                        checked = enableStar,
+                        onCheckedChange = {
+                            enableStar = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 3,
+                        title = "Fluffy Cluster",
+                        subtitle = "Crystal bead cluster",
+                        checked = enableCluster,
+                        onCheckedChange = {
+                            enableCluster = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 4,
+                        title = "Diamond Tip Crystal",
+                        subtitle = "6-Ray diamond points",
+                        checked = enableDiamond,
+                        onCheckedChange = {
+                            enableDiamond = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 5,
+                        title = "12-Point Radiant Star",
+                        subtitle = "Alternating long/short rays",
+                        checked = enableStar12,
+                        onCheckedChange = {
+                            enableStar12 = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 6,
+                        title = "Cross Ice Crystal",
+                        subtitle = "Cross needle with dots",
+                        checked = enableCross,
+                        onCheckedChange = {
+                            enableCross = it
+                            sendUpdate()
+                        }
+                    )
+
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    ShapeToggleRow(
+                        flakeType = 7,
+                        title = "Soft Snow Dust",
+                        subtitle = "Soft glowing snow particle",
+                        checked = enableDust,
+                        onCheckedChange = {
+                            enableDust = it
+                            sendUpdate()
+                        }
+                    )
+                }
+            }
+
+            // Physics & Smart Toggles Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = iceSurfaceVariant,
+                tonalElevation = 2.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Physics & Smart Toggles",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = iceOnSurfaceVariant
                     )
 
                     // Only Home & Lock Screen Toggle
@@ -313,17 +515,31 @@ fun SnowControlScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "🏠 Only Home & Lock Screen", color = Color.White, fontWeight = FontWeight.Medium)
-                            Text(text = "Hide snow when opening other apps", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "🏠", fontSize = 22.sp)
+                            Column {
+                                Text("Only Home & Lock Screen", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = iceOnSurfaceVariant)
+                                Text("Hide snow when opening other apps", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                            }
                         }
                         Switch(
                             checked = onlyHomeLock,
-                            onCheckedChange = {
-                                onlyHomeLock = it
+                            onCheckedChange = { checked ->
+                                onlyHomeLock = checked
+                                if (checked && !hasUsageStatsPermission()) {
+                                    onCheckUsageStatsPermission()
+                                }
                                 selectedWeather = WeatherMode.CUSTOM
                                 sendUpdate()
-                            }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = icePrimary
+                            )
                         )
                     }
 
@@ -335,9 +551,16 @@ fun SnowControlScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "📱 Tilt Sensor Wind", color = Color.White, fontWeight = FontWeight.Medium)
-                            Text(text = "Tilt your phone to blow snow sideways", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "📱", fontSize = 22.sp)
+                            Column {
+                                Text("Tilt Sensor Wind", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = iceOnSurfaceVariant)
+                                Text("Tilt phone to blow snow sideways", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                            }
                         }
                         Switch(
                             checked = tiltEnabled,
@@ -345,7 +568,11 @@ fun SnowControlScreen(
                                 tiltEnabled = it
                                 selectedWeather = WeatherMode.CUSTOM
                                 sendUpdate()
-                            }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = icePrimary
+                            )
                         )
                     }
 
@@ -357,9 +584,16 @@ fun SnowControlScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "🌪️ Random Wind Gusts", color = Color.White, fontWeight = FontWeight.Medium)
-                            Text(text = "Periodic sudden gusts of wind blowing snow", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "🌪️", fontSize = 22.sp)
+                            Column {
+                                Text("Random Wind Gusts", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = iceOnSurfaceVariant)
+                                Text("Periodic gusts blowing snow dynamically", style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+                            }
                         }
                         Switch(
                             checked = gustsEnabled,
@@ -367,27 +601,34 @@ fun SnowControlScreen(
                                 gustsEnabled = it
                                 selectedWeather = WeatherMode.CUSTOM
                                 sendUpdate()
-                            }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = icePrimary
+                            )
                         )
                     }
                 }
             }
 
-            // Custom Sliders Settings Card
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.8f)),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
+            // Advanced Sliders Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = iceSurfaceVariant,
+                tonalElevation = 2.dp
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     Text(
                         text = "3D Parallax & Fine-Tuning",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 15.sp
+                        color = iceOnSurfaceVariant
                     )
 
-                    // Density
                     SettingSlider(
                         title = "Snow Density: ${flakeCount.toInt()}",
                         value = flakeCount,
@@ -399,7 +640,6 @@ fun SnowControlScreen(
                         }
                     )
 
-                    // Speed
                     SettingSlider(
                         title = "Fall Speed: ${String.format(Locale.US, "%.1f", speed)}x",
                         value = speed,
@@ -411,7 +651,6 @@ fun SnowControlScreen(
                         }
                     )
 
-                    // Size
                     SettingSlider(
                         title = "Flake Size: ${String.format(Locale.US, "%.1f", size)}x",
                         value = size,
@@ -423,7 +662,6 @@ fun SnowControlScreen(
                         }
                     )
 
-                    // Wind
                     SettingSlider(
                         title = "Base Wind / Drift: ${String.format(Locale.US, "%.1f", wind)}",
                         value = wind,
@@ -437,8 +675,141 @@ fun SnowControlScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+fun SnowflakePreviewIcon(flakeType: Int, modifier: Modifier = Modifier) {
+    val surfaceColor = Color(0xFF80D8FF)
+
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF00BCD4).copy(alpha = 0.2f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(24.dp)) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val r = size.minDimension / 2.5f
+
+            when (flakeType) {
+                0 -> {
+                    drawCircle(color = surfaceColor, radius = r * 0.35f, center = center)
+                    for (i in 0..5) {
+                        val angle = i * Math.PI / 3.0
+                        val cosA = cos(angle).toFloat()
+                        val sinA = sin(angle).toFloat()
+                        val tip = Offset(center.x + cosA * r * 1.8f, center.y + sinA * r * 1.8f)
+                        drawLine(color = surfaceColor, start = center, end = tip, strokeWidth = 2f, cap = StrokeCap.Round)
+                    }
+                }
+                1 -> {
+                    drawCircle(color = surfaceColor, radius = r * 0.4f, center = center)
+                    for (i in 0..5) {
+                        val angle = i * Math.PI / 3.0
+                        val nextAngle = (i + 1) * Math.PI / 3.0
+                        val p1 = Offset(center.x + cos(angle).toFloat() * r * 1.5f, center.y + sin(angle).toFloat() * r * 1.5f)
+                        val p2 = Offset(center.x + cos(nextAngle).toFloat() * r * 1.5f, center.y + sin(nextAngle).toFloat() * r * 1.5f)
+                        drawLine(color = surfaceColor, start = p1, end = p2, strokeWidth = 2f, cap = StrokeCap.Round)
+                    }
+                }
+                2 -> {
+                    drawCircle(color = surfaceColor, radius = r * 0.4f, center = center)
+                    for (i in 0..3) {
+                        val angle = i * Math.PI / 4.0
+                        val cosA = cos(angle).toFloat()
+                        val sinA = sin(angle).toFloat()
+                        drawLine(
+                            color = surfaceColor,
+                            start = Offset(center.x - cosA * r * 1.6f, center.y - sinA * r * 1.6f),
+                            end = Offset(center.x + cosA * r * 1.6f, center.y + sinA * r * 1.6f),
+                            strokeWidth = 2f,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+                3 -> {
+                    drawCircle(color = surfaceColor, radius = r * 0.7f, center = center)
+                    for (i in 0..5) {
+                        val angle = i * Math.PI / 3.0
+                        val sat = Offset(center.x + cos(angle).toFloat() * r * 1.2f, center.y + sin(angle).toFloat() * r * 1.2f)
+                        drawCircle(color = surfaceColor, radius = r * 0.3f, center = sat)
+                    }
+                }
+                4 -> {
+                    drawCircle(color = surfaceColor, radius = r * 0.3f, center = center)
+                    for (i in 0..5) {
+                        val angle = i * Math.PI / 3.0
+                        val cosA = cos(angle).toFloat()
+                        val sinA = sin(angle).toFloat()
+                        val tip = Offset(center.x + cosA * r * 1.6f, center.y + sinA * r * 1.6f)
+                        drawLine(color = surfaceColor, start = center, end = tip, strokeWidth = 2f, cap = StrokeCap.Round)
+                    }
+                }
+                5 -> {
+                    drawCircle(color = surfaceColor, radius = r * 0.3f, center = center)
+                    for (i in 0..11) {
+                        val angle = i * Math.PI / 6.0
+                        val cosA = cos(angle).toFloat()
+                        val sinA = sin(angle).toFloat()
+                        val len = if (i % 2 == 0) r * 1.8f else r * 1.1f
+                        val tip = Offset(center.x + cosA * len, center.y + sinA * len)
+                        drawLine(color = surfaceColor, start = center, end = tip, strokeWidth = 1.8f, cap = StrokeCap.Round)
+                    }
+                }
+                6 -> {
+                    for (i in 0..3) {
+                        val angle = i * Math.PI / 2.0
+                        val cosA = cos(angle).toFloat()
+                        val sinA = sin(angle).toFloat()
+                        val tip = Offset(center.x + cosA * r * 1.8f, center.y + sinA * r * 1.8f)
+                        drawLine(color = surfaceColor, start = center, end = tip, strokeWidth = 2f, cap = StrokeCap.Round)
+                        drawCircle(color = surfaceColor, radius = r * 0.25f, center = tip)
+                    }
+                }
+                7 -> {
+                    drawCircle(color = surfaceColor, radius = r * 1.1f, center = center)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ShapeToggleRow(
+    flakeType: Int,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            SnowflakePreviewIcon(flakeType = flakeType)
+            Column {
+                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = Color(0xFFE0F7FA))
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xFF94A3B8))
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF00BCD4)
+            )
+        )
     }
 }
 
@@ -449,16 +820,21 @@ fun SettingSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(text = title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE2E8F0))
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFFE0F7FA)
+        )
         Slider(
             value = value,
             valueRange = valueRange,
             onValueChange = onValueChange,
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF60A5FA),
-                activeTrackColor = Color(0xFF3B82F6),
-                inactiveTrackColor = Color(0xFF475569)
+                thumbColor = Color(0xFF80D8FF),
+                activeTrackColor = Color(0xFF00BCD4),
+                inactiveTrackColor = Color(0xFF334155)
             )
         )
     }
