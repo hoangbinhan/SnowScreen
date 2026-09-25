@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "142290867961",
+    "project_id": "snow-screen",
+    "storage_bucket": "snow-screen.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:142290867961:android:6269ca95a3e0c6e42af428",
+        "android_client_info": {
+          "package_name": "com.example.snowscreen"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBC5K1dREXiApa2ozTxnySQfYNyjM5bnz4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
