@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snow Screen ❄️ - 3D Parallax Snowfall Overlay for Android</title>
+    <meta name="description" content="Snow Screen brings a magical 3D parallax snowfall overlay to your Android status bar, home screen, and lock screen with tilt sensor wind physics and custom crystal shapes.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0B132B;
+            --bg-card: #1C2541;
+            --bg-card-hover: #232F4E;
+            --accent-cyan: #00BCD4;
+            --accent-ice: #80D8FF;
+            --text-light: #E0F7FA;
+            --text-muted: #94A3B8;
+            --radius-lg: 24px;
+            --radius-md: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Snow Canvas Overlay */
+        #snow-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+            position: relative;
+            z-index: 20;
+        }
+
+        /* Navigation */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 32px 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 800;
+            color: #FFFFFF;
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .brand-icon {
+            font-size: 28px;
+            filter: drop-shadow(0 0 8px rgba(0, 188, 212, 0.6));
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            transition: color 0.2s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--accent-ice);
+        }
+
+        .btn-header {
+            background: linear-gradient(135deg, #00BCD4 0%, #00E5FF 100%);
+            color: #0F172A;
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 14px;
+            text-decoration: none;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btn-header:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 229, 255, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 80px 0 100px;
+            text-align: center;
+            max-width: 850px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 188, 212, 0.12);
+            border: 1px solid rgba(0, 188, 212, 0.3);
+            padding: 8px 18px;
+            border-radius: 100px;
+            color: var(--accent-ice);
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 28px;
+        }
+
+        .hero-title {
+            font-size: 56px;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -1.5px;
+            margin-bottom: 24px;
+            background: linear-gradient(180deg, #FFFFFF 0%, #80D8FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-subtitle {
+            font-size: 20px;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+            font-weight: 500;
+            line-height: 1.6;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00BCD4 0%, #00E5FF 100%);
+            color: #0F172A;
+            padding: 16px 36px;
+            border-radius: var(--radius-md);
+            font-weight: 800;
+            font-size: 18px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.25s ease;
+            box-shadow: 0 10px 30px rgba(0, 229, 255, 0.25);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 14px 40px rgba(0, 229, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-light);
+            padding: 16px 32px;
+            border-radius: var(--radius-md);
+            font-weight: 700;
+            font-size: 17px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.25s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Features Section */
+        .section-title {
+            text-align: center;
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 18px;
+            margin-bottom: 60px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 100px;
+        }
+
+        .feature-card {
+            background-color: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            background-color: var(--bg-card-hover);
+            transform: translateY(-4px);
+            border-color: rgba(0, 188, 212, 0.3);
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: rgba(0, 188, 212, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: var(--accent-ice);
+        }
+
+        .feature-title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #FFFFFF;
+        }
+
+        .feature-desc {
+            color: var(--text-muted);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        /* Shapes Showcase */
+        .shapes-section {
+            background: rgba(28, 37, 65, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: 48px;
+            margin-bottom: 100px;
+            backdrop-filter: blur(10px);
+        }
+
+        .shapes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+
+        .shape-item {
+            background: rgba(11, 19, 43, 0.6);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .shape-icon {
+            font-size: 32px;
+        }
+
+        .shape-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-light);
+        }
+
+        .shape-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Pro Banner */
+        .pro-banner {
+            background: linear-gradient(135deg, rgba(0, 188, 212, 0.15) 0%, rgba(30, 41, 59, 0.8) 100%);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: var(--radius-lg);
+            padding: 48px;
+            text-align: center;
+            margin-bottom: 100px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pro-title {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            color: #FFFFFF;
+        }
+
+        .pro-desc {
+            color: var(--text-muted);
+            font-size: 16px;
+            max-width: 650px;
+            margin: 0 auto 32px;
+        }
+
+        .pro-list {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 32px;
+        }
+
+        .pro-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--accent-ice);
+            background: rgba(0, 188, 212, 0.1);
+            padding: 10px 20px;
+            border-radius: 100px;
+        }
+
+        /* Privacy Policy Card */
+        .privacy-section {
+            background-color: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: 48px;
+            margin-bottom: 100px;
+            scroll-margin-top: 40px;
+        }
+
+        .privacy-content h3 {
+            font-size: 20px;
+            color: var(--accent-ice);
+            margin: 24px 0 12px;
+            font-weight: 700;
+        }
+
+        .privacy-content p {
+            color: var(--text-muted);
+            font-size: 15px;
+            margin-bottom: 16px;
+            line-height: 1.7;
+        }
+
+        .privacy-content ul {
+            margin-left: 20px;
+            color: var(--text-muted);
+            font-size: 15px;
+            margin-bottom: 16px;
+        }
+
+        .privacy-content li {
+            margin-bottom: 8px;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 40px 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        footer a {
+            color: var(--accent-ice);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 40px;
+            }
+
+            .hero-subtitle {
+                font-size: 17px;
+            }
+
+            .shapes-section, .privacy-section, .pro-banner {
+                padding: 28px 20px;
+            }
+
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Snow Animation Canvas -->
+    <canvas id="snow-canvas"></canvas>
+
+    <div class="container">
+        <!-- Header Nav -->
+        <nav>
+            <a href="#" class="brand">
+                <span class="brand-icon">❄️</span>
+                <span>Snow Screen</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#shapes" class="nav-link">Snowflakes</a>
+                <a href="#pro" class="nav-link">Pro Version</a>
+                <a href="#privacy" class="nav-link">Privacy Policy</a>
+                <a href="#download" class="btn-header">Get App</a>
+            </div>
+        </nav>
+
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-badge">
+                <span>✨</span> Android System-Wide Overlay Effect
+            </div>
+            <h1 class="hero-title">Magical 3D Parallax Snowfall for Your Phone</h1>
+            <p class="hero-subtitle">
+                Transform your Android screen into a cozy winter wonderland. Enjoy screen-wide snow falling smoothly over your status bar, home screen, and lock screen with real-time tilt sensor physics.
+            </p>
+            <div class="hero-cta" id="download">
+                <a href="https://play.google.com/store/apps/details?id=com.hoangbinhan.snowscreen" class="btn-primary" target="_blank">
+                    <span>📱</span> Get on Google Play
+                </a>
+                <a href="#privacy" class="btn-secondary">
+                    <span>🛡️</span> Privacy Policy
+                </a>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section id="features">
+            <h2 class="section-title">Engineered for Performance</h2>
+            <p class="section-subtitle">A native particle engine crafted for 60 FPS smooth rendering and minimal battery impact.</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🏔️</div>
+                    <h3 class="feature-title">3D Parallax Depth</h3>
+                    <p class="feature-desc">
+                        Multi-layered snow rendering with foreground, midground, and background depth layers for an authentic 3D spatial experience.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <h3 class="feature-title">Tilt Sensor Wind</h3>
+                    <p class="feature-desc">
+                        Built-in accelerometer integration. Tilt your device left or right to dynamically blow snow sideways in real time.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🌪️</div>
+                    <h3 class="feature-title">Random Wind Gusts</h3>
+                    <p class="feature-desc">
+                        Simulates realistic natural weather with periodic wind gusts and gentle swirl patterns blowing snow particles.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🏠</div>
+                    <h3 class="feature-title">Smart App Filtering</h3>
+                    <p class="feature-desc">
+                        "Only Home & Lock Screen" mode automatically pauses the snow effect when you open other apps to prevent distraction.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🔋</div>
+                    <h3 class="feature-title">Battery & Memory Efficient</h3>
+                    <p class="feature-desc">
+                        Utilizes Android Choreographer 60 FPS frame callback with intelligent off-screen particle recycling for zero battery drain.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">Weather Presets</h3>
+                    <p class="feature-desc">
+                        Quickly switch between Gentle Snowfall, Heavy Blizzard, or Magical Crystal Float presets with a single tap.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Snowflake Shapes Showcase -->
+        <section class="shapes-section" id="shapes">
+            <h2 class="section-title" style="margin-bottom: 8px;">8 Symmetric Snowflake Crystals</h2>
+            <p class="section-subtitle" style="margin-bottom: 0;">Select your favorite crystal morphologies to customize your snowfall style.</p>
+
+            <div class="shapes-grid">
+                <div class="shape-item">
+                    <div class="shape-icon">❄️</div>
+                    <div>
+                        <div class="shape-name">Stellar Dendrite</div>
+                        <div class="shape-desc">6-Ray fern crystal</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">🔯</div>
+                    <div>
+                        <div class="shape-name">Hexagonal Plate</div>
+                        <div class="shape-desc">Geometric crystal star</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">✳️</div>
+                    <div>
+                        <div class="shape-name">8-Point Star</div>
+                        <div class="shape-desc">Intersecting needles</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">🫧</div>
+                    <div>
+                        <div class="shape-name">Fluffy Cluster</div>
+                        <div class="shape-desc">Crystal bead cluster</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">💎</div>
+                    <div>
+                        <div class="shape-name">Diamond Tip</div>
+                        <div class="shape-desc">6-Ray diamond points</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">☸️</div>
+                    <div>
+                        <div class="shape-name">12-Point Radiant</div>
+                        <div class="shape-desc">Alternating ray crystal</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">✝️</div>
+                    <div>
+                        <div class="shape-name">Cross Ice Crystal</div>
+                        <div class="shape-desc">Needle with satellite dots</div>
+                    </div>
+                </div>
+
+                <div class="shape-item">
+                    <div class="shape-icon">✨</div>
+                    <div>
+                        <div class="shape-name">Soft Snow Dust</div>
+                        <div class="shape-desc">Glowing soft particle</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pro Version Section -->
+        <section class="pro-banner" id="pro">
+            <h2 class="pro-title">Unlock Configuration Pro 🔒</h2>
+            <p class="pro-desc">Take complete control over your snowfall parameters with full fine-tuning controls.</p>
+
+            <div class="pro-list">
+                <div class="pro-item">✓ Custom Snow Density Slider (50 - 300)</div>
+                <div class="pro-item">✓ Custom Fall Speed & Size (0.5x - 3.0x)</div>
+                <div class="pro-item">✓ Custom Base Wind Direction & Drift</div>
+                <div class="pro-item">✓ Lifetime Access ($0.99)</div>
+            </div>
+
+            <a href="https://play.google.com/store/apps/details?id=com.hoangbinhan.snowscreen" class="btn-primary" target="_blank">
+                <span>🔒</span> Unlock Pro in App
+            </a>
+        </section>
+
+        <!-- Privacy Policy Section -->
+        <section class="privacy-section" id="privacy">
+            <h2 class="section-title" style="text-align: left; margin-bottom: 8px;">Privacy Policy</h2>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 24px;">Last updated: February 2026</p>
+
+            <div class="privacy-content">
+                <p>
+                    This Privacy Policy applies to the <strong>Snow Screen</strong> mobile application developed by <strong>Hoang Binh An</strong>. We respect your privacy and are committed to protecting it.
+                </p>
+
+                <h3>1. Information Collection and Use</h3>
+                <p>
+                    <strong>Snow Screen does not collect, store, transmit, or share any personal user data or sensitive information.</strong> The application operates entirely on your device.
+                </p>
+
+                <h3>2. Permissions Used by the App</h3>
+                <p>To deliver system-wide overlay snow effects, the app requests the following system permissions:</p>
+                <ul>
+                    <li><strong>Display Over Other Apps (SYSTEM_ALERT_WINDOW):</strong> Required to render snowfall particles over the status bar, home screen, and lock screen.</li>
+                    <li><strong>Foreground Service (FOREGROUND_SERVICE):</strong> Keeps the snow effect running continuously and smoothly in the background.</li>
+                    <li><strong>Usage Stats Access (PACKAGE_USAGE_STATS):</strong> Optional permission used solely to detect when you leave the home screen, allowing the "Only Home & Lock Screen" feature to automatically pause snow over other apps. This data is processed locally on your phone and is never saved or transmitted.</li>
+                    <li><strong>In-App Purchases (BILLING):</strong> Managed securely by Google Play Store to handle optional Pro feature unlocking.</li>
+                </ul>
+
+                <h3>3. Third-Party Services</h3>
+                <p>
+                    The app uses Google Play Services, Firebase Analytics, and Google Play Billing for basic usage metrics and secure purchases. These services are governed by Google's Privacy Policy.
+                </p>
+
+                <h3>4. Children's Privacy</h3>
+                <p>
+                    Snow Screen does not knowingly collect any information from children under the age of 13.
+                </p>
+
+                <h3>5. Contact Us</h3>
+                <p>
+                    If you have any questions regarding this Privacy Policy, please contact us at: <br>
+                    <strong>Email:</strong> <a href="mailto:hoangbinhan@gmail.com" style="color: var(--accent-ice);">hoangbinhan@gmail.com</a>
+                </p>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <p>© 2026 Snow Screen. Developed with ❤️ by <a href="https://github.com/hoangbinhan/SnowScreen" target="_blank">Hoang Binh An</a>.</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Lightweight Snowfall Animation for Web -->
+    <script>
+        const canvas = document.getElementById('snow-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        class Flake {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * -height;
+                this.radius = Math.random() * 3 + 1;
+                this.speed = Math.random() * 1.2 + 0.8;
+                this.wind = Math.random() * 0.8 - 0.4;
+                this.opacity = Math.random() * 0.7 + 0.3;
+            }
+
+            update() {
+                this.y += this.speed;
+                this.x += this.wind + Math.sin(this.y * 0.01) * 0.3;
+
+                if (this.y > height) {
+                    this.reset();
+                    this.y = 0;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(224, 247, 250, ${this.opacity})`;
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = 'rgba(0, 229, 255, 0.8)';
+                ctx.fill();
+            }
+        }
+
+        const flakes = Array.from({ length: 60 }, () => new Flake());
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            flakes.forEach(flake => {
+                flake.update();
+                flake.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
