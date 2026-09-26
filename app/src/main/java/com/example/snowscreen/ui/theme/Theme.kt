@@ -1,4 +1,4 @@
-package com.example.snowscreen.ui.theme
+package com.hoangbinhan.snowscreen.ui.theme
 
 import android.app.Activity
 import android.os.Build

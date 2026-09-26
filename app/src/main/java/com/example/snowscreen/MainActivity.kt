@@ -1,4 +1,4 @@
-package com.example.snowscreen
+package com.hoangbinhan.snowscreen
 
 import android.app.AppOpsManager
 import android.content.Context
@@ -47,16 +47,26 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.snowscreen.model.WeatherMode
-import com.example.snowscreen.service.SnowService
-import com.example.snowscreen.ui.theme.SnowScreenTheme
+import com.hoangbinhan.snowscreen.billing.BillingManager
+import com.hoangbinhan.snowscreen.billing.ProPreferences
+import com.hoangbinhan.snowscreen.model.WeatherMode
+import com.hoangbinhan.snowscreen.service.SnowService
+import com.hoangbinhan.snowscreen.ui.ProUnlockDialog
+import com.hoangbinhan.snowscreen.ui.theme.SnowScreenTheme
 import kotlin.math.cos
 import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var proPreferences: ProPreferences
+    private lateinit var billingManager: BillingManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        proPreferences = ProPreferences(this)
+        billingManager = BillingManager(this, proPreferences)
+        billingManager.startConnection()
+
         enableEdgeToEdge()
         setContent {
             SnowScreenTheme {
@@ -65,14 +75,21 @@ class MainActivity : ComponentActivity() {
                     color = Color(0xFF0F172A)
                 ) {
                     SnowControlScreen(
+                        billingManager = billingManager,
                         onCheckOverlayPermission = { checkOverlayPermission() },
                         hasOverlayPermission = { hasOverlayPermission() },
                         onCheckUsageStatsPermission = { checkUsageStatsPermission() },
-                        hasUsageStatsPermission = { hasUsageStatsPermission() }
+                        hasUsageStatsPermission = { hasUsageStatsPermission() },
+                        onRequestPurchase = { billingManager.launchPurchaseFlow(this@MainActivity) }
                     )
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        billingManager.destroy()
     }
 
     private fun hasOverlayPermission(): Boolean {
@@ -132,56 +149,23 @@ fun loadAssetImage(context: Context, path: String): ImageBitmap? {
     }
 }
 
-@Composable
-fun GithubIcon(modifier: Modifier = Modifier, tint: Color = Color(0xFF94A3B8)) {
-    Canvas(modifier = modifier.size(16.dp)) {
-        val iconPath = Path().apply {
-            moveTo(12f, 0.3f)
-            cubicTo(5.37f, 0.3f, 0f, 5.7f, 0f, 12.3f)
-            cubicTo(0f, 17.6f, 3.44f, 22.1f, 8.2f, 23.7f)
-            cubicTo(8.8f, 23.8f, 9f, 23.4f, 9f, 23.1f)
-            cubicTo(9f, 22.8f, 9f, 22f, 9f, 21.1f)
-            cubicTo(5.67f, 21.8f, 4.97f, 19.5f, 4.97f, 19.5f)
-            cubicTo(4.42f, 18.1f, 3.63f, 17.7f, 3.63f, 17.7f)
-            cubicTo(2.55f, 17f, 3.71f, 17f, 3.71f, 17f)
-            cubicTo(4.91f, 17.1f, 5.54f, 18.2f, 5.54f, 18.2f)
-            cubicTo(6.6f, 20f, 8.3f, 19.5f, 9f, 19.2f)
-            cubicTo(9.1f, 18.4f, 9.42f, 17.9f, 9.77f, 17.6f)
-            cubicTo(7.1f, 17.3f, 4.3f, 16.3f, 4.3f, 11.7f)
-            cubicTo(4.3f, 10.4f, 4.8f, 9.3f, 5.6f, 8.5f)
-            cubicTo(5.5f, 8.2f, 5.1f, 7f, 5.7f, 5.3f)
-            cubicTo(5.7f, 5.3f, 6.7f, 5f, 9f, 6.5f)
-            cubicTo(10f, 6.2f, 11f, 6.1f, 12f, 6.1f)
-            cubicTo(13f, 6.1f, 14f, 6.2f, 15f, 6.5f)
-            cubicTo(17.3f, 5f, 18.3f, 5.3f, 18.3f, 5.3f)
-            cubicTo(18.9f, 7f, 18.5f, 8.2f, 18.4f, 8.5f)
-            cubicTo(19.2f, 9.3f, 19.7f, 10.4f, 19.7f, 11.7f)
-            cubicTo(19.7f, 16.3f, 16.9f, 17.3f, 14.2f, 17.6f)
-            cubicTo(14.6f, 18f, 15f, 18.7f, 15f, 19.8f)
-            cubicTo(15f, 21.4f, 15f, 22.7f, 15f, 23.1f)
-            cubicTo(15f, 23.4f, 15.2f, 23.8f, 15.8f, 23.7f)
-            cubicTo(20.56f, 22.1f, 24f, 17.6f, 24f, 12.3f)
-            cubicTo(24f, 5.7f, 18.63f, 0.3f, 12f, 0.3f)
-            close()
-        }
-        scale(size.width / 24f, pivot = Offset.Zero) {
-            drawPath(iconPath, color = tint)
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SnowControlScreen(
+    billingManager: BillingManager,
     onCheckOverlayPermission: () -> Unit,
     hasOverlayPermission: () -> Boolean,
     onCheckUsageStatsPermission: () -> Unit,
-    hasUsageStatsPermission: () -> Boolean
+    hasUsageStatsPermission: () -> Boolean,
+    onRequestPurchase: () -> Unit
 ) {
     val context = LocalContext.current
     var isRunning by remember { mutableStateOf(SnowService.isRunning) }
     var hasPermission by remember { mutableStateOf(hasOverlayPermission()) }
     var showGuideDialog by remember { mutableStateOf(!hasPermission) }
+
+    val isProUnlocked by billingManager.isProUnlocked.collectAsState()
+    var showProDialog by remember { mutableStateOf(false) }
 
     // Lifecycle observer to auto-detect when user returns from Settings page after granting permission
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -284,6 +268,20 @@ fun SnowControlScreen(
         PermissionGuideDialog(
             onDismiss = { showGuideDialog = false },
             onOpenSettings = { onCheckOverlayPermission() }
+        )
+    }
+
+    if (showProDialog) {
+        ProUnlockDialog(
+            onDismiss = { showProDialog = false },
+            onUnlockClick = {
+                onRequestPurchase()
+                showProDialog = false
+            },
+            onRestoreClick = {
+                billingManager.queryPurchases()
+                showProDialog = false
+            }
         )
     }
 
@@ -736,97 +734,108 @@ fun SnowControlScreen(
                 }
             }
 
-            // Advanced Sliders Card
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                color = iceSurfaceVariant,
-                tonalElevation = 2.dp
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Advanced Sliders Card (Configuration) - Wrapped with Pro Lock Overlay
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = iceSurfaceVariant,
+                    tonalElevation = 2.dp
                 ) {
-                    Text(
-                        text = "Configuration",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = iceOnSurfaceVariant
-                    )
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "Configuration",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = iceOnSurfaceVariant
+                        )
 
-                    SettingSlider(
-                        title = "Snow Density: ${flakeCount.toInt()}",
-                        value = flakeCount,
-                        valueRange = 50f..300f,
-                        onValueChange = {
-                            flakeCount = it
-                            selectedWeather = WeatherMode.CUSTOM
-                            sendUpdate()
-                        }
-                    )
+                        SettingSlider(
+                            title = "Snow Density: ${flakeCount.toInt()}",
+                            value = flakeCount,
+                            valueRange = 50f..300f,
+                            enabled = isProUnlocked,
+                            onValueChange = {
+                                flakeCount = it
+                                selectedWeather = WeatherMode.CUSTOM
+                                sendUpdate()
+                            }
+                        )
 
-                    SettingSlider(
-                        title = "Fall Speed: ${String.format(Locale.US, "%.1f", speed)}x",
-                        value = speed,
-                        valueRange = 0.5f..3.0f,
-                        onValueChange = {
-                            speed = it
-                            selectedWeather = WeatherMode.CUSTOM
-                            sendUpdate()
-                        }
-                    )
+                        SettingSlider(
+                            title = "Fall Speed: ${String.format(Locale.US, "%.1f", speed)}x",
+                            value = speed,
+                            valueRange = 0.5f..3.0f,
+                            enabled = isProUnlocked,
+                            onValueChange = {
+                                speed = it
+                                selectedWeather = WeatherMode.CUSTOM
+                                sendUpdate()
+                            }
+                        )
 
-                    SettingSlider(
-                        title = "Flake Size: ${String.format(Locale.US, "%.1f", size)}x",
-                        value = size,
-                        valueRange = 0.5f..2.0f,
-                        onValueChange = {
-                            size = it
-                            selectedWeather = WeatherMode.CUSTOM
-                            sendUpdate()
-                        }
-                    )
+                        SettingSlider(
+                            title = "Flake Size: ${String.format(Locale.US, "%.1f", size)}x",
+                            value = size,
+                            valueRange = 0.5f..2.0f,
+                            enabled = isProUnlocked,
+                            onValueChange = {
+                                size = it
+                                selectedWeather = WeatherMode.CUSTOM
+                                sendUpdate()
+                            }
+                        )
 
-                    SettingSlider(
-                        title = "Base Wind / Drift: ${String.format(Locale.US, "%.1f", wind)}",
-                        value = wind,
-                        valueRange = -3.0f..3.0f,
-                        onValueChange = {
-                            wind = it
-                            selectedWeather = WeatherMode.CUSTOM
-                            sendUpdate()
+                        SettingSlider(
+                            title = "Base Wind / Drift: ${String.format(Locale.US, "%.1f", wind)}",
+                            value = wind,
+                            valueRange = -3.0f..3.0f,
+                            enabled = isProUnlocked,
+                            onValueChange = {
+                                wind = it
+                                selectedWeather = WeatherMode.CUSTOM
+                                sendUpdate()
+                            }
+                        )
+                    }
+                }
+
+                // Translucent Pro Lock Overlay when NOT unlocked
+                if (!isProUnlocked) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFF0F172A).copy(alpha = 0.85f))
+                            .clickable { showProDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(
+                            onClick = { showProDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00E5FF),
+                                contentColor = Color(0xFF0F172A)
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text("🔒 Unlock Configuration Pro", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
-                    )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Clickable Developer Credit Row with GitHub Icon
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable {
-                        val intent = Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse("https://github.com/hoangbinhan/SnowScreen")
-                        )
-                        context.startActivity(intent)
-                    }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                GithubIcon(tint = Color(0xFF94A3B8).copy(alpha = 0.9f))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "developed by Hoang Binh An",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF94A3B8).copy(alpha = 0.9f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+            Text(
+                text = "developed by Hoang Binh An",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF94A3B8).copy(alpha = 0.6f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Normal
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -1086,6 +1095,7 @@ fun SettingSlider(
     title: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
+    enabled: Boolean = true,
     onValueChange: (Float) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1093,16 +1103,17 @@ fun SettingSlider(
             text = title,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFFE0F7FA)
+            color = if (enabled) Color(0xFFE0F7FA) else Color(0xFF64748B)
         )
         Slider(
             value = value,
             valueRange = valueRange,
+            enabled = enabled,
             onValueChange = onValueChange,
             colors = SliderDefaults.colors(
-                thumbColor = Color(0xFF80D8FF),
-                activeTrackColor = Color(0xFF00BCD4),
-                inactiveTrackColor = Color(0xFF334155)
+                thumbColor = if (enabled) Color(0xFF80D8FF) else Color(0xFF475569),
+                activeTrackColor = if (enabled) Color(0xFF00BCD4) else Color(0xFF334155),
+                inactiveTrackColor = Color(0xFF1E293B)
             )
         )
     }

@@ -1,4 +1,4 @@
-package com.example.snowscreen.model
+package com.hoangbinhan.snowscreen.model
 
 data class SnowSettings(
     val flakeCount: Int = 70,

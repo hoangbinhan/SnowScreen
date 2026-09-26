@@ -1,4 +1,4 @@
-package com.example.snowscreen.service
+package com.hoangbinhan.snowscreen.service
 
 import android.app.AlarmManager
 import android.app.AppOpsManager
@@ -27,9 +27,9 @@ import android.os.SystemClock
 import android.view.View
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
-import com.example.snowscreen.MainActivity
-import com.example.snowscreen.R
-import com.example.snowscreen.model.SnowSettings
+import com.hoangbinhan.snowscreen.MainActivity
+import com.hoangbinhan.snowscreen.R
+import com.hoangbinhan.snowscreen.model.SnowSettings
 
 class SnowService : Service(), SensorEventListener {
 

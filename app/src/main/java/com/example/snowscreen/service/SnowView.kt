@@ -1,4 +1,4 @@
-package com.example.snowscreen.service
+package com.hoangbinhan.snowscreen.service
 
 import android.content.Context
 import android.graphics.Canvas
@@ -7,7 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.view.Choreographer
 import android.view.View
-import com.example.snowscreen.model.SnowSettings
+import com.hoangbinhan.snowscreen.model.SnowSettings
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin

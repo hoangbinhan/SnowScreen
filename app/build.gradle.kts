@@ -5,17 +5,17 @@ plugins {
 }
 
 android {
-    namespace = "com.example.snowscreen"
+    namespace = "com.hoangbinhan.snowscreen"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.snowscreen"
+        applicationId = "com.hoangbinhan.snowscreen"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -39,6 +39,8 @@ android {
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics")
+
+    implementation("com.android.billingclient:billing-ktx:8.0.0")
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
