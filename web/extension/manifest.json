@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "SnowScreen — Snow on the Web",
+  "version": "1.0.1",
+  "description": "Snowfall on every web page with layered depth, wind and eight snowflake shapes.",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "SnowScreen",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
+  },
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*"],
+    "js": ["settings.js", "snow.js", "content.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }]
+}

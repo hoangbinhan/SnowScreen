@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SnowScreen</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><span class="logo" aria-hidden="true">❄</span><div><h1>SnowScreen</h1><p><a class="donate" href="https://buymeacoffee.com/hoangbinha7" target="_blank" rel="noopener noreferrer">Support SnowScreen — Buy me a coffee</a></p></div></header>
+  <main>
+    <button id="enabled" class="power" type="button" aria-pressed="false" disabled><span id="power-label">Start snow</span><span id="power-state">OFF</span></button>
+    <label class="field" for="preset">Weather</label>
+    <select id="preset"><option value="gentle">❄ Gentle snow</option><option value="blizzard">🌨 Blizzard</option><option value="magical">✨ Magical</option><option value="custom">Custom</option></select>
+    <div class="sliders">
+      <label for="count">Snowflake count <output id="count-value"></output></label><input id="count" type="range" min="10" max="350" step="1">
+      <label for="speed">Speed <output id="speed-value"></output></label><input id="speed" type="range" min="0.2" max="3" step="0.1">
+      <label for="size">Size <output id="size-value"></output></label><input id="size" type="range" min="0.3" max="2" step="0.1">
+      <label for="wind">Wind · left / right <output id="wind-value"></output></label><input id="wind" type="range" min="-3" max="3" step="0.1">
+      <label for="opacity">Opacity <output id="opacity-value"></output></label><input id="opacity" type="range" min="0.1" max="1" step="0.05">
+    </div>
+    <label class="option">Random wind gusts <input id="gusts" type="checkbox"></label>
+    <label class="option">Wind follows pointer <input id="pointerWind" type="checkbox"></label>
+    <fieldset><legend>Snowflake shapes</legend><div class="shapes">
+      <label><input type="checkbox" name="shape" value="0"> Dendrite</label><label><input type="checkbox" name="shape" value="1"> Hexagon</label>
+      <label><input type="checkbox" name="shape" value="2"> 8-point star</label><label><input type="checkbox" name="shape" value="3"> Cluster</label>
+      <label><input type="checkbox" name="shape" value="4"> Diamond</label><label><input type="checkbox" name="shape" value="5"> 12-point star</label>
+      <label><input type="checkbox" name="shape" value="6"> Cross</label><label><input type="checkbox" name="shape" value="7"> Snow dust</label>
+    </div></fieldset>
+    <button id="reset" type="button">Reset to defaults</button>
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <footer>Autosaved · Applies to all web tabs<br>Reload tabs opened before installing the extension.<br>Paused when system reduced motion is enabled.</footer>
+  <script src="settings.js"></script><script src="popup.js"></script>
+</body>
+</html>
