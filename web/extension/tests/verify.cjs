@@ -6,9 +6,10 @@ const root = path.resolve(__dirname, '..');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const manifest = JSON.parse(read('manifest.json'));
 assert.equal(manifest.manifest_version, 3);
-assert.deepEqual(manifest.permissions, ['storage']);
-for (const name of [...manifest.content_scripts[0].js, manifest.action.default_popup, 'popup.css', 'popup.js']) assert(fs.existsSync(path.join(root, name)), name);
-for (const name of ['settings.js', 'snow.js', 'content.js', 'popup.js']) new vm.Script(read(name), { filename: name });
+assert.deepEqual(manifest.permissions, ['storage', 'scripting']);
+assert.deepEqual(manifest.host_permissions, manifest.content_scripts[0].matches);
+for (const name of [...manifest.content_scripts[0].js, manifest.action.default_popup, manifest.background.service_worker, 'popup.css', 'popup.js']) assert(fs.existsSync(path.join(root, name)), name);
+for (const name of ['settings.js', 'snow.js', 'content.js', 'popup.js', 'background.js']) new vm.Script(read(name), { filename: name });
 let frames = new Map(), nextFrame = 0;
 const context = vm.createContext({ console, Math, requestAnimationFrame: callback => {
   frames.set(++nextFrame, callback); return nextFrame;
@@ -46,31 +47,69 @@ engine.stop(); assert.equal(frames.size, 0);
 engine.start(); assert.equal(frames.size, 1);
 engine.stop();
 // Exercise actual content script with browser APIs mocked, including storage races.
-let storageListener, resolveStorage;
-const events = {}, windowEvents = {};
-const host = { style: {}, isConnected: false, setAttribute() {}, attachShadow: () => ({ append() {} }), remove() { this.isConnected = false; } };
+const storageListeners = [], reads = [], hosts = [], observers = new Set();
+const events = {}, windowEvents = {}, children = new Set();
+const emit = value => { for (const fn of storageListeners) fn({ snowSettings: { newValue: value } }, 'local'); };
+const settle = () => new Promise(resolve => setImmediate(resolve));
+const node = () => ({ style: {}, isConnected: false, setAttribute() {}, attachShadow: () => ({ append() {} }),
+  remove() { children.delete(this); this.isConnected = false; } });
 const motion = { matches: false, addEventListener: (_, fn) => { events.motion = fn; } };
-context.document = { hidden: false, createElement: name => name === 'canvas' ? { ...canvas, style: {} } : host,
-  documentElement: { append(node) { node.isConnected = true; } }, addEventListener: (name, fn) => { events[name] = fn; } };
-context.window = { addEventListener: (name, fn) => { windowEvents[name] = fn; } };
+context.document = { hidden: false, querySelectorAll: () => [...children],
+  createElement: name => { if (name === 'canvas') return { ...canvas, style: {} }; hosts.push(node()); return hosts.at(-1); },
+  documentElement: { append(child) { children.add(child); child.isConnected = true; for (const fn of [...observers]) fn(); } },
+  addEventListener: (name, fn) => { events[name] = fn; } };
+context.window = { addEventListener: (name, fn) => { windowEvents[name] = fn; }, dispatchEvent: event => windowEvents[event.type]?.(event) };
+context.Event = class { constructor(type) { this.type = type; } };
+context.MutationObserver = class {
+  constructor(fn) { this.fn = fn; }
+  observe() { observers.add(this.fn); }
+  disconnect() { observers.delete(this.fn); }
+};
+const timers = new Set();
+context.setInterval = fn => { timers.add(fn); return fn; };
+context.clearInterval = fn => timers.delete(fn);
 context.innerWidth = 1200; context.innerHeight = 800; context.devicePixelRatio = 1;
 context.matchMedia = () => motion;
-context.chrome = { storage: { onChanged: { addListener: fn => { storageListener = fn; } },
-  local: { get: () => new Promise(resolve => { resolveStorage = resolve; }) } } };
-vm.runInContext(read('content.js'), context);
-storageListener({ snowSettings: { newValue: { enabled: false } } }, 'local');
-resolveStorage({ snowSettings: { enabled: true } });
-Promise.resolve().then(() => {
-  assert.equal(host.isConnected, false, 'Initial read must not override newer storage event');
-  storageListener({ snowSettings: { newValue: { enabled: true } } }, 'local');
-  assert.equal(host.isConnected, true); assert.equal(frames.size, 1);
+context.chrome = { runtime: { id: 'test' }, storage: { onChanged: { addListener: fn => { storageListeners.push(fn); } },
+  local: { get: () => new Promise(resolve => { reads.push(resolve); }) } } };
+(async () => {
+  vm.runInContext(read('content.js'), context);
+  const first = hosts[0];
+  emit({ enabled: false });
+  reads[0]({ snowSettings: { enabled: true } }); await settle();
+  assert.equal(first.isConnected, false, 'Initial read must not override newer storage event');
+  emit({ enabled: true });
+  assert.equal(first.isConnected, true); assert.equal(frames.size, 1);
   context.document.hidden = true; events.visibilitychange(); assert.equal(frames.size, 0);
   context.document.hidden = false; events.visibilitychange(); assert.equal(frames.size, 1);
   motion.matches = true; events.motion(); assert.equal(frames.size, 0);
   motion.matches = false; events.motion(); assert.equal(frames.size, 1);
   windowEvents.pagehide(); assert.equal(frames.size, 0);
   windowEvents.pageshow(); assert.equal(frames.size, 1);
-  storageListener({ snowSettings: { newValue: { enabled: false } } }, 'local');
-  assert.equal(frames.size, 0); assert.equal(host.isConnected, false);
-  console.log('PASS: manifest, script syntax, settings, 8 shapes, particle simulation, frame lifecycle and content storage race.');
-}).catch(error => { console.error(error); process.exitCode = 1; });
+  emit({ enabled: false });
+  assert.equal(frames.size, 0); assert.equal(first.isConnected, false);
+  // Reads started before the last event are stale.
+  reads[1]({ snowSettings: { enabled: true } }); reads[2]({ snowSettings: { enabled: true } }); await settle();
+  assert.equal(first.isConnected, false, 'Stale read must not override newer storage event');
+  // A tab that missed the storage event catches up when it is shown.
+  events.visibilitychange(); assert.equal(first.isConnected, false);
+  reads[3]({ snowSettings: { enabled: true } }); await settle();
+  assert.equal(first.isConnected, true, 'Showing a tab must resync from storage'); assert.equal(frames.size, 1);
+  const intruder = node(); context.document.documentElement.append(intruder);
+  assert.equal(intruder.isConnected, false, 'Foreign overlay must be removed'); assert.equal(first.isConnected, true);
+  // A second injection (extension reload or update) retires the first instance.
+  vm.runInContext(read('content.js'), context);
+  const second = hosts[1];
+  assert.equal(first.isConnected, false); assert.equal(frames.size, 0);
+  reads[4]({ snowSettings: { enabled: true } }); await settle();
+  assert.equal(second.isConnected, true); assert.equal(frames.size, 1);
+  emit({ enabled: false }); assert.equal(frames.size, 0); assert.equal(children.size, 0);
+  emit({ enabled: true }); assert.equal(frames.size, 1);
+  assert.equal(first.isConnected, false, 'Retired instance must ignore storage events'); assert.equal(second.isConnected, true);
+  // An orphaned instance shuts itself down instead of snowing on stale settings.
+  assert.equal(timers.size, 1, 'Retired instance must clear its watchdog');
+  context.chrome.runtime.id = undefined; for (const fn of [...timers]) fn();
+  assert.equal(frames.size, 0); assert.equal(second.isConnected, false); assert.equal(timers.size, 0);
+  emit({ enabled: true }); assert.equal(frames.size, 0); assert.equal(children.size, 0);
+  console.log('PASS: manifest, script syntax, settings, 8 shapes, particle simulation, frame lifecycle, content storage race, tab resync and instance retirement.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

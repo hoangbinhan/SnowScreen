@@ -3,7 +3,10 @@
   "name": "SnowScreen — Snow on the Web",
   "version": "1.0.1",
   "description": "Snowfall on every web page with layered depth, wind and eight snowflake shapes.",
-  "permissions": ["storage"],
+  "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "128": "icons/icon-128.png" },
+  "permissions": ["storage", "scripting"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js" },
   "action": {
     "default_title": "SnowScreen",
     "default_popup": "popup.html",
