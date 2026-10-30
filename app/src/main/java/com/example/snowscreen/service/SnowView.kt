@@ -49,6 +49,7 @@ class SnowView(context: Context, private var settings: SnowSettings = SnowSettin
     private var lastFrameTimeNanos: Long = 0L
     private val choreographer = Choreographer.getInstance()
     private var isAnimating = false
+    private var paused = false
 
     private var gustTimer = 0f
     private var currentGustWind = 0f
@@ -146,8 +147,23 @@ class SnowView(context: Context, private var settings: SnowSettings = SnowSettin
         }
     }
 
+    /** Freezes the animation (no frame callbacks, no drawing) while paused; resumes without a time jump. */
+    fun setPaused(paused: Boolean) {
+        if (this.paused == paused) return
+        this.paused = paused
+        if (paused) {
+            isAnimating = false
+            choreographer.removeFrameCallback(this)
+        } else if (isAttachedToWindow) {
+            isAnimating = true
+            lastFrameTimeNanos = System.nanoTime()
+            choreographer.postFrameCallback(this)
+        }
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (paused) return
         isAnimating = true
         lastFrameTimeNanos = System.nanoTime()
         choreographer.postFrameCallback(this)

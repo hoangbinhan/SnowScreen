@@ -48,6 +48,8 @@ class SnowService : Service(), SensorEventListener {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_UPDATE = "ACTION_UPDATE"
+        const val ACTION_PAUSE = "ACTION_PAUSE"
+        const val ACTION_RESUME = "ACTION_RESUME"
 
         const val EXTRA_FLAKE_COUNT = "EXTRA_FLAKE_COUNT"
         const val EXTRA_SPEED = "EXTRA_SPEED"
@@ -70,6 +72,9 @@ class SnowService : Service(), SensorEventListener {
 
         var isRunning = false
             private set
+
+        var isPaused = false
+            private set
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -89,6 +94,8 @@ class SnowService : Service(), SensorEventListener {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_PAUSE -> if (isRunning) setPaused(true)
+            ACTION_RESUME -> if (isRunning) setPaused(false)
             ACTION_UPDATE -> {
                 val count = intent.getIntExtra(EXTRA_FLAKE_COUNT, currentSettings.flakeCount)
                 val speed = intent.getFloatExtra(EXTRA_SPEED, currentSettings.speedMultiplier)
@@ -150,8 +157,21 @@ class SnowService : Service(), SensorEventListener {
         return START_STICKY
     }
 
+    private fun setPaused(paused: Boolean) {
+        isPaused = paused
+        snowView?.setPaused(paused)
+        updateVisibilityChecker()
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(NOTIFICATION_ID, buildNotification())
+    }
+
     private fun updateVisibilityChecker() {
         visibilityRunnable?.let { handler.removeCallbacks(it) }
+
+        if (isPaused) {
+            snowView?.visibility = View.GONE
+            return
+        }
 
         if (currentSettings.onlyHomeAndLock) {
             visibilityRunnable = object : Runnable {
@@ -242,21 +262,39 @@ class SnowService : Service(), SensorEventListener {
             notificationManager.createNotificationChannel(channel)
         }
 
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent,
+        val notification = buildNotification()
+
+        startForeground(NOTIFICATION_ID, notification)
+    }
+
+    private fun buildNotification(): Notification {
+        val openIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val toggleIntent = PendingIntent.getService(
+            this, 2,
+            Intent(this, SnowService::class.java).apply {
+                action = if (isPaused) ACTION_RESUME else ACTION_PAUSE
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val stopIntent = PendingIntent.getService(
+            this, 3,
+            Intent(this, SnowService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Snow Screen")
-            .setContentText("Snow effect active")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .setContentText(if (isPaused) "Snow paused" else "Snow effect active")
+            .setSmallIcon(R.drawable.ic_stat_snow)
+            .setContentIntent(openIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .addAction(0, if (isPaused) "Resume" else "Pause", toggleIntent)
+            .addAction(0, "Stop", stopIntent)
             .build()
-
-        startForeground(NOTIFICATION_ID, notification)
     }
 
     private fun showSnowOverlay() {
@@ -314,6 +352,7 @@ class SnowService : Service(), SensorEventListener {
         visibilityRunnable?.let { handler.removeCallbacks(it) }
         unregisterSensor()
         isRunning = false
+        isPaused = false
         if (snowView != null && windowManager != null) {
             try {
                 windowManager?.removeView(snowView)

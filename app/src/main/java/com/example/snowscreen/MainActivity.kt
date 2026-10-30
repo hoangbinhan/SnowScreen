@@ -1,8 +1,10 @@
 package com.hoangbinhan.snowscreen
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
@@ -11,12 +13,16 @@ import android.os.Process
 import android.provider.Settings
 import java.util.Locale
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -161,7 +167,13 @@ fun SnowControlScreen(
 ) {
     val context = LocalContext.current
     var isRunning by remember { mutableStateOf(SnowService.isRunning) }
+    var isPaused by remember { mutableStateOf(SnowService.isPaused) }
     var hasPermission by remember { mutableStateOf(hasOverlayPermission()) }
+
+    // Android 13+ hides the foreground notification (and its Pause/Stop buttons) until this is granted.
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
     var showGuideDialog by remember { mutableStateOf(!hasPermission) }
 
     val isProUnlocked by billingManager.isProUnlocked.collectAsState()
@@ -172,6 +184,9 @@ fun SnowControlScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                // The notification's Pause button can change state while the app is in the background.
+                isRunning = SnowService.isRunning
+                isPaused = SnowService.isPaused
                 val updatedPermission = hasOverlayPermission()
                 hasPermission = updatedPermission
                 if (updatedPermission) {
@@ -228,6 +243,7 @@ fun SnowControlScreen(
         }
         context.startService(intent)
         isRunning = false
+        isPaused = false
     }
 
     fun sendUpdate() {
@@ -307,13 +323,51 @@ fun SnowControlScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(10.dp))
+            // Header: title + live status pill
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Snow Screen",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Let it snow on your screen",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+                val (statusText, statusColor) = when {
+                    !isRunning -> "OFF" to Color(0xFF94A3B8)
+                    isPaused -> "PAUSED" to Color(0xFFFFB74D)
+                    else -> "ON" to Color(0xFF69F0AE)
+                }
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = statusColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+                        Text(statusText, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    }
+                }
+            }
 
             // Sweeping Light Gradient Brush
             val startX = shimmerOffset * 1000f
             val shimmerBrush = if (isRunning) {
                 Brush.linearGradient(
-                    colors = listOf(Color(0xFFFF3D00), Color(0xFFFF8A80), Color(0xFFFF3D00)),
+                    colors = listOf(Color(0xFFE53935), Color(0xFFFF8A80), Color(0xFFE53935)),
                     start = Offset(startX - 250f, 0f),
                     end = Offset(startX + 250f, 0f)
                 )
@@ -365,6 +419,12 @@ fun SnowControlScreen(
                                 putExtra(SnowService.EXTRA_STAR12, enableStar12)
                                 putExtra(SnowService.EXTRA_CROSS, enableCross)
                                 putExtra(SnowService.EXTRA_DUST, enableDust)
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                                != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 context.startForegroundService(intent)
@@ -497,6 +557,7 @@ fun SnowControlScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
                 color = iceSurfaceVariant,
+                border = BorderStroke(1.dp, Color(0xFF334155)),
                 tonalElevation = 2.dp
             ) {
                 Column(
@@ -619,6 +680,7 @@ fun SnowControlScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
                 color = iceSurfaceVariant,
+                border = BorderStroke(1.dp, Color(0xFF334155)),
                 tonalElevation = 2.dp
             ) {
                 Column(
@@ -740,6 +802,7 @@ fun SnowControlScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     color = iceSurfaceVariant,
+                    border = BorderStroke(1.dp, Color(0xFF334155)),
                     tonalElevation = 2.dp
                 ) {
                     Column(
