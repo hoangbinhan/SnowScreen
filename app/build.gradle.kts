@@ -14,17 +14,24 @@ android {
         applicationId = "com.hoangbinhan.snowscreen"
         minSdk = 24
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 6
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
+            // R8: minify + obfuscate + resource shrink. Mapping file is written to
+            // app/build/outputs/mapping/release/mapping.txt (also bundled in the .aab) for Play Console.
             optimization {
-                enable = false
+                enable = true
+                keepRules {
+                    files.add(getDefaultProguardFile("proguard-android-optimize.txt"))
+                    files.add(file("proguard-rules.pro"))
+                }
             }
+            isShrinkResources = true
         }
     }
     compileOptions {
@@ -49,6 +56,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    // Direct dependency so Gradle resolves fragment above the 1.1.0 pulled in by play-services-basement (Firebase).
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

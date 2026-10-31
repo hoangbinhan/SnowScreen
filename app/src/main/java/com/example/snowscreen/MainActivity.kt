@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
@@ -68,12 +69,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var billingManager: BillingManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // App background is always dark, so keep light (white) system bar icons regardless of system theme.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         super.onCreate(savedInstanceState)
         proPreferences = ProPreferences(this)
         billingManager = BillingManager(this, proPreferences)
         billingManager.startConnection()
 
-        enableEdgeToEdge()
         setContent {
             SnowScreenTheme {
                 Surface(
@@ -318,7 +323,7 @@ fun SnowControlScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally

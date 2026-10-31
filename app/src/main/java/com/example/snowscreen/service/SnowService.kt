@@ -318,7 +318,10 @@ class SnowService : Service(), SensorEventListener {
             layoutParamFlags,
             PixelFormat.TRANSLUCENT
         ).apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // SHORT_EDGES is deprecated on API 35+; ALWAYS (API 30+) draws into the cutout area on every edge.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
